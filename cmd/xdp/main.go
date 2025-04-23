@@ -41,17 +41,28 @@ func main() {
 	log.Printf("Attached XDP program to iface %q (index %d)", iface.Name, iface.Index)
 	log.Printf("Press Ctrl-C to exit and remove the program")
 
-	routeOpts := &pass.RouteOpts{
+	err = program.Objs.UpdateRoute(&pass.RouteOpts{
 		Prefixlen: 32,
 		Dst:       net.ParseIP("10.0.0.254"),
 		Ifindex:   uint32(iface.Index),
 		Gateway:   net.ParseIP("0.0.0.0"),
-	}
-	err = program.Objs.UpdateRoute(routeOpts)
+	})
 	if err != nil {
 		log.Printf("Error updating route: %v", err)
 		return
 	}
+
+	err = program.Objs.UpdateRoute(&pass.RouteOpts{
+		Prefixlen: 32,
+		Dst:       net.ParseIP("10.0.0.1"),
+		Ifindex:   uint32(iface.Index),
+		Gateway:   net.IPv4(0, 0, 0, 0),
+	})
+	if err != nil {
+		log.Printf("Error updating route: %v", err)
+		return
+	}
+
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
