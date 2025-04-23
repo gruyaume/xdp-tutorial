@@ -1,0 +1,15 @@
+interfaces: ["vethR1", "vethR2"]
+routes:
+  - destination: "10.1.0.1"
+    prefixlen: 32
+    interface: "vethR2"
+    gateway: "0.0.0.0"
+  - destination: "10.0.0.1"
+    prefixlen: 32
+    interface: "vethR1"
+    gateway: "0.0.0.0"
+neighbors:
+  - ip: "10.0.0.1"
+    mac: "c6:9f:fb:e6:cc:1f"
+  - ip: "10.1.0.1"
+    mac: "8a:93:d5:28:9e:35"

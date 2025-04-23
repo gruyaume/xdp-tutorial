@@ -6,12 +6,40 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type RouteYaml struct {
+	Dst       string `yaml:"destination"`
+	Prefixlen uint32 `yaml:"prefixlen"`
+	Ifindex   uint32 `yaml:"interface"`
+	Gateway   string `yaml:"gateway"`
+}
+
+type NeighborYaml struct {
+	IP  string `yaml:"ip"`
+	Mac string `yaml:"mac"`
+}
+
 type ConfigYaml struct {
-	Interfaces []string `yaml:"interfaces"`
+	Interfaces []string       `yaml:"interfaces"`
+	Routes     []RouteYaml    `yaml:"routes"`
+	Neighbors  []NeighborYaml `yaml:"neighbors"`
+}
+
+type Route struct {
+	Dst       string
+	Prefixlen uint32
+	Ifindex   uint32
+	Gateway   string
+}
+
+type Neighbor struct {
+	IP  string
+	Mac string
 }
 
 type Config struct {
 	Interfaces []string
+	Routes     []Route
+	Neighbors  []Neighbor
 }
 
 func Load(path string) (Config, error) {
@@ -27,5 +55,20 @@ func Load(path string) (Config, error) {
 		return config, err
 	}
 	config.Interfaces = configYaml.Interfaces
+	for _, route := range configYaml.Routes {
+		config.Routes = append(config.Routes, Route{
+			Dst:       route.Dst,
+			Prefixlen: route.Prefixlen,
+			Ifindex:   route.Ifindex,
+			Gateway:   route.Gateway,
+		})
+	}
+	for _, neighbor := range configYaml.Neighbors {
+		config.Neighbors = append(config.Neighbors, Neighbor{
+			IP:  neighbor.IP,
+			Mac: neighbor.Mac,
+		})
+	}
+
 	return config, nil
 }

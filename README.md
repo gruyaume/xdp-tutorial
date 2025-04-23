@@ -48,6 +48,6 @@ sudo ip netns exec hostB ip route add 10.0.0.0/24 via 10.1.0.254 dev vethB
 ### 3. Build and run the project
 
 ```shell
-go build cmd/xdp/main.go
-sudo ip netns exec router ./main --config tutorial.yaml
+go build cmd/router/main.go
+sudo ip netns exec router ./main --config router.yaml
 ```
