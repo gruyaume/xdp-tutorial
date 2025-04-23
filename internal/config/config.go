@@ -22,6 +22,7 @@ type ConfigYaml struct {
 	Interfaces []string       `yaml:"interfaces"`
 	Routes     []RouteYaml    `yaml:"routes"`
 	Neighbors  []NeighborYaml `yaml:"neighbors"`
+	LogLevel   string         `yaml:"log_level"`
 }
 
 type Route struct {
@@ -40,6 +41,7 @@ type Config struct {
 	Interfaces []string
 	Routes     []Route
 	Neighbors  []Neighbor
+	LogLevel   string
 }
 
 func Load(path string) (Config, error) {

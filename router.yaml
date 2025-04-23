@@ -13,3 +13,4 @@ neighbors:
     mac: "c6:9f:fb:e6:cc:1f"
   - ip: "10.1.0.1"
     mac: "8a:93:d5:28:9e:35"
+log_level: "info"
