@@ -12,7 +12,7 @@
 #define XDP_ACTION_MAX (XDP_REDIRECT + 1)
 #endif
 
-// 1) Per‐action counters
+// 1) Per-action counters
 struct datarec
 {
     __u64 packets;
@@ -26,7 +26,7 @@ struct
     __uint(max_entries, XDP_ACTION_MAX);
 } xdp_stats_map SEC(".maps");
 
-// 2) LPM‐trie for routing
+// 2) LPM-trie for routing
 struct route_key
 {
     __u32 prefixlen;
@@ -46,7 +46,7 @@ struct
     __type(value, struct next_hop);
 } routes_map SEC(".maps");
 
-// 3) MAC‐rewrite helper maps
+// 3) MAC-rewrite helper maps
 struct ifmac
 {
     __u8 mac[6];
@@ -79,7 +79,7 @@ int router(struct xdp_md *ctx)
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
 
-    // 4.a) Default‐DROP, bump DROP counter
+    // 4.a) Default-DROP, bump DROP counter
     __u32 action = XDP_DROP;
     struct datarec *r = bpf_map_lookup_elem(&xdp_stats_map, &action);
     if (r)
@@ -107,13 +107,13 @@ int router(struct xdp_md *ctx)
     // 4.d) Compute host-order dst
     __u32 dst_host = bpf_ntohl(ip->daddr);
 
-    // 4.e) Pass packets destined to router itself (e.g., 10.0.0.254 && 10.1.0.254)
+    // 4.e) Pass packets destined to router itself (e.g., 10.0.0.254 & 10.1.0.254)
     __be32 r1 = (__be32)bpf_htonl((10 << 24) | (0 << 16) | (0 << 8) | 254);
     __be32 r2 = (__be32)bpf_htonl((10 << 24) | (1 << 16) | (0 << 8) | 254);
     if (ip->daddr == r1 || ip->daddr == r2)
         return XDP_PASS;
 
-    // 4.f) LPM‐trie lookup
+    // 4.f) LPM-trie lookup
     struct route_key key = {.prefixlen = 32, .addr = dst_host};
     struct next_hop *nh = NULL;
 #pragma unroll
@@ -146,6 +146,7 @@ int router(struct xdp_md *ctx)
 
     // 4.h) Manual TTL decrement + checksum fix
     __u32 old_ttl_be = (__u32)ip->ttl << 8;
+    // store old checksum in host-order 32-bit
     __u32 old_csum32 = (__u32)ip->check;
     __u32 csum_diff = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),
                                     &old_csum32, sizeof(old_csum32), 0);
