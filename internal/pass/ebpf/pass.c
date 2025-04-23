@@ -23,18 +23,16 @@ struct
     __uint(max_entries, XDP_ACTION_MAX);
 } xdp_stats_map SEC(".maps");
 
-/* LPM-trie keys for routing */
+/* LPM-trie key and value */
 struct route_key
 {
-    __u32 prefixlen; /* subnet mask length in bits */
-    __u32 addr;      /* network order IPv4 address */
+    __u32 prefixlen;
+    __u32 addr; /* network byte order */
 };
-
-/* next-hop info */
 struct next_hop
 {
-    __u32 ifindex; /* output interface index */
-    __u32 gateway; /* next-hop gateway IP (optional) */
+    __u32 ifindex;
+    __u32 gateway;
 };
 
 struct
@@ -46,8 +44,13 @@ struct
     __type(value, struct next_hop);
 } routes_map SEC(".maps");
 
-/* Literal-only logging */
+/*
+ * Logging macros:
+ *  - LOG: generic
+ *  - LOG_IP: prints IPv4 in human format
+ */
 #define LOG(fmt, ...) bpf_printk(fmt "\n", ##__VA_ARGS__)
+#define LOG_IP(msg, ip) bpf_printk(msg " %pI4\n", ip)
 
 SEC("xdp")
 int router(struct xdp_md *ctx)
@@ -55,7 +58,7 @@ int router(struct xdp_md *ctx)
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
 
-    /* increment counters for PASS action */
+    /* default drop */
     __u32 action = XDP_DROP;
     struct datarec *rec = bpf_map_lookup_elem(&xdp_stats_map, &action);
     if (rec)
@@ -64,19 +67,19 @@ int router(struct xdp_md *ctx)
         __sync_fetch_and_add(&rec->bytes, data_end - data);
     }
 
-    /* parse Ethernet header */
+    /* parse ethernet */
     struct ethhdr *eth = data;
     if ((void *)eth + sizeof(*eth) > data_end)
-        return XDP_PASS;
+        return action;
     if (bpf_ntohs(eth->h_proto) != ETH_P_IP)
         return action;
 
-    /* parse IPv4 header */
+    /* parse IPv4 */
     struct iphdr *ip = data + sizeof(*eth);
     if ((void *)ip + sizeof(*ip) > data_end)
         return action;
 
-    /* longest-prefix-match route lookup */
+    /* lookup route */
     struct route_key key = {.prefixlen = 32, .addr = ip->daddr};
     struct next_hop *nh = NULL;
 #pragma unroll
@@ -89,21 +92,21 @@ int router(struct xdp_md *ctx)
     }
     if (!nh)
     {
-        LOG("no route for dst=0x%08x", ip->daddr);
+        /* print human-readable IPv4 */
+        LOG_IP("no route for dst", &ip->daddr);
         return action;
     }
-    LOG("route found: dst=0x%08x -> ifindex=%u", ip->daddr, nh->ifindex);
+    LOG_IP("route found for dst, ifindex", &ip->daddr);
+    LOG("-> ifindex %u, gateway %pI4", nh->ifindex, &nh->gateway);
 
-    /* decrement TTL and update IPv4 checksum */
+    /* decrement TTL + checksum */
     __u32 old_ttl_be = (__u32)ip->ttl << 8;
-    /* cast ip->check to __be32* to match bpf_csum_diff signature */
     __u32 csum = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),
                                (__be32 *)&ip->check, sizeof(ip->check), 0);
     ip->ttl--;
-    /* truncate new checksum back to 16 bits */
     ip->check = (__sum16)(~csum);
 
-    /* forward on the selected interface */
+    /* forward */
     return bpf_redirect(nh->ifindex, 0);
 }
 
