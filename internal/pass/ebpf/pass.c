@@ -60,7 +60,7 @@ struct
 {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 16);
-    __type(key, __u32); // ifindex
+    __type(key, __u32);
     __type(value, struct ifmac);
 } ifmap SEC(".maps");
 
@@ -68,7 +68,7 @@ struct
 {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 256);
-    __type(key, __u32); // next-hop IPv4 (host-order)
+    __type(key, __u32);
     __type(value, struct neighbor);
 } neigh_map SEC(".maps");
 
@@ -107,7 +107,7 @@ int router(struct xdp_md *ctx)
     // 4.d) Compute host-order dst
     __u32 dst_host = bpf_ntohl(ip->daddr);
 
-    // 4.e) Pass packets destined to router itself (e.g., 10.0.0.254 & 10.1.0.254)
+    // 4.e) Pass router-local IPs
     __be32 r1 = (__be32)bpf_htonl((10 << 24) | (0 << 16) | (0 << 8) | 254);
     __be32 r2 = (__be32)bpf_htonl((10 << 24) | (1 << 16) | (0 << 8) | 254);
     if (ip->daddr == r1 || ip->daddr == r2)
@@ -133,25 +133,52 @@ int router(struct xdp_md *ctx)
     LOG("-> ifindex %u, gateway %pI4", nh->ifindex, &nh->gateway);
 
     // 4.g) Rewrite Ethernet header
+    // Log original MACs
+    LOG("orig src %02x:%02x:%02x:%02x:%02x:%02x",
+        eth->h_source[0], eth->h_source[1], eth->h_source[2],
+        eth->h_source[3], eth->h_source[4], eth->h_source[5]);
+    LOG("orig dst %02x:%02x:%02x:%02x:%02x:%02x",
+        eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
+        eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
+
     struct ifmac *src = bpf_map_lookup_elem(&ifmap, &nh->ifindex);
-    if (src)
+    if (!src)
+    {
+        LOG("missing ifmap entry for ifindex %u", nh->ifindex);
+    }
+    else
     {
         __builtin_memcpy(eth->h_source, src->mac, 6);
     }
     struct neighbor *dst = bpf_map_lookup_elem(&neigh_map, &nh->gateway);
-    if (dst)
+    if (!dst)
+    {
+        LOG("missing neigh entry for gateway %pI4", &nh->gateway);
+    }
+    else
     {
         __builtin_memcpy(eth->h_dest, dst->mac, 6);
     }
 
+    // Log new MACs
+    LOG("new    src %02x:%02x:%02x:%02x:%02x:%02x",
+        eth->h_source[0], eth->h_source[1], eth->h_source[2],
+        eth->h_source[3], eth->h_source[4], eth->h_source[5]);
+    LOG("new    dst %02x:%02x:%02x:%02x:%02x:%02x",
+        eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
+        eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
+
     // 4.h) Manual TTL decrement + checksum fix
     __u32 old_ttl_be = (__u32)ip->ttl << 8;
-    // store old checksum in host-order 32-bit
     __u32 old_csum32 = (__u32)ip->check;
     __u32 csum_diff = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),
                                     &old_csum32, sizeof(old_csum32), 0);
+    // Log checksum before
+    LOG("old csum 0x%04x, diff %u", old_csum32, csum_diff);
     ip->ttl--;
     ip->check = ~(__sum16)csum_diff;
+    // Log checksum after
+    LOG("new csum 0x%04x", ip->check);
 
     // 4.i) Redirect
     return bpf_redirect(nh->ifindex, 0);
