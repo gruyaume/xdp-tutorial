@@ -53,14 +53,10 @@ func Run(config config.Config, logger *zap.SugaredLogger) error {
 	logger.Infof("Press Ctrl-C to exit and remove the program")
 
 	for _, route := range config.Routes {
-		dstIface, err := net.InterfaceByName(route.Interface)
-		if err != nil {
-			return fmt.Errorf("error getting interface index for %v: %w", dstIface, err)
-		}
 		err = program.Objs.UpdateRoute(&pass.RouteOpts{
 			Prefixlen: route.Prefixlen,
 			Dst:       net.ParseIP(route.Dst),
-			Ifindex:   uint32(dstIface.Index),
+			Ifindex:   uint32(route.Interface.Index),
 			Gateway:   net.ParseIP(route.Gateway),
 		})
 		if err != nil {
@@ -69,16 +65,12 @@ func Run(config config.Config, logger *zap.SugaredLogger) error {
 		logger.Infof("updated route %s/%d via %s", route.Dst, route.Prefixlen, route.Gateway)
 	}
 
-	for _, ifiName := range config.Interfaces {
-		iface, err := net.InterfaceByName(ifiName)
-		if err != nil {
-			return fmt.Errorf("error getting interface index for %s: %w", ifiName, err)
-		}
+	for _, iface := range config.Interfaces {
 		err = program.Objs.UpdateInterface(iface)
 		if err != nil {
-			return fmt.Errorf("error updating interface %s: %w", ifiName, err)
+			return fmt.Errorf("error updating interface %s: %w", iface.Name, err)
 		}
-		logger.Infof("updated interface %s", ifiName)
+		logger.Infof("updated interface %s", iface.Name)
 	}
 
 	for _, neighbor := range config.Neighbors {

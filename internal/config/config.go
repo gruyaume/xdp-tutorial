@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net"
 	"os"
 
 	"gopkg.in/yaml.v2"
@@ -28,7 +29,7 @@ type ConfigYaml struct {
 type Route struct {
 	Dst       string
 	Prefixlen uint32
-	Interface string
+	Interface *net.Interface
 	Gateway   string
 }
 
@@ -38,7 +39,7 @@ type Neighbor struct {
 }
 
 type Config struct {
-	Interfaces []string
+	Interfaces []*net.Interface
 	Routes     []Route
 	Neighbors  []Neighbor
 	LogLevel   string
@@ -56,12 +57,23 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return config, err
 	}
-	config.Interfaces = configYaml.Interfaces
+	for _, ifaceName := range configYaml.Interfaces {
+		iface, err := net.InterfaceByName(ifaceName)
+		if err != nil {
+			return config, err
+		}
+		config.Interfaces = append(config.Interfaces, iface)
+	}
 	for _, route := range configYaml.Routes {
+		iface, err := net.InterfaceByName(route.Interface)
+		if err != nil {
+			return config, err
+		}
+
 		config.Routes = append(config.Routes, Route{
 			Dst:       route.Dst,
 			Prefixlen: route.Prefixlen,
-			Interface: route.Interface,
+			Interface: iface,
 			Gateway:   route.Gateway,
 		})
 	}
@@ -71,6 +83,7 @@ func Load(path string) (Config, error) {
 			Mac: neighbor.Mac,
 		})
 	}
+	config.LogLevel = configYaml.LogLevel
 
 	return config, nil
 }
