@@ -102,3 +102,38 @@ func (objs PassObjects) UpdateRoute(opts *RouteOpts) error {
 	}
 	return nil
 }
+
+type Route struct {
+	Prefixlen uint32
+	Dst       net.IP
+	Ifindex   uint32
+	Gateway   net.IP
+}
+
+func (objs PassObjects) ListRoutes() ([]Route, error) {
+	routes := make([]Route, 0)
+	var key PassRouteKey
+	var value PassNextHop
+	iterator := objs.RoutesMap.Iterate()
+	for iterator.Next(&key, &value) {
+		dst := net.IPv4(
+			byte(key.Addr>>24),
+			byte(key.Addr>>16),
+			byte(key.Addr>>8),
+			byte(key.Addr),
+		)
+		gw := net.IPv4(
+			byte(value.Gateway>>24),
+			byte(value.Gateway>>16),
+			byte(value.Gateway>>8),
+			byte(value.Gateway),
+		)
+		routes = append(routes, Route{
+			Prefixlen: key.Prefixlen,
+			Dst:       dst,
+			Ifindex:   value.Ifindex,
+			Gateway:   gw,
+		})
+	}
+	return routes, nil
+}

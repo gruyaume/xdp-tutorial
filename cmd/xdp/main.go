@@ -78,6 +78,14 @@ func main() {
 			continue
 		}
 		fmt.Println("Packets number:", packets)
+		routes, err := program.Objs.ListRoutes()
+		if err != nil {
+			log.Printf("Error listing routes: %v", err)
+			continue
+		}
+		for _, route := range routes {
+			fmt.Printf("Route: %s/%d via %s\n", route.Dst, route.Prefixlen, route.Gateway)
+		}
 	}
 
 	select {}
