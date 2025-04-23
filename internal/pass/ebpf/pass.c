@@ -166,15 +166,20 @@ int router(struct xdp_md *ctx)
         eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
         eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
 
-    // 4.h) Manual TTL decrement + checksum fix with logs
-    __u32 old_ttl_be = (__u32)ip->ttl << 8;
-    __u32 old_csum32 = (__u32)ip->check;
-    __u32 diff = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),
-                               &old_csum32, sizeof(old_csum32), 0);
-    LOG("old csum 0x%04x, diff %u", old_csum32, diff);
-    ip->ttl--;
-    ip->check = ~(__sum16)diff;
-    LOG("new csum 0x%04x", ip->check);
+    // 4.h) Correct TTL decrement + checksum update
+    __u32 old_ttl_be = (__u32)ip->ttl << 8; // TTL is high byte of a 16-bit word (TTL|PROTO)
+    __u32 new_ttl_be = (__u32)(ip->ttl - 1) << 8;
+    __u32 old_csum = (__u32)ip->check; // existing checksum in network byte order
+
+    // compute: new_csum = old_csum - old_word + new_word, with wraparound
+    __u32 new_csum = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),
+                                   &new_ttl_be, sizeof(new_ttl_be),
+                                   old_csum);
+
+    ip->ttl--;                     // decrement TTL in place
+    ip->check = (__sum16)new_csum; // write back new checksum
+
+    LOG("updated TTL -> %u, checksum -> 0x%04x", ip->ttl, ip->check);
 
     // 4.i) Redirect
     return bpf_redirect(nh->ifindex, 0);
