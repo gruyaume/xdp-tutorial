@@ -104,17 +104,17 @@ int router(struct xdp_md *ctx)
         return action;
     LOG_IP("saw IPv4 pkt, dst", &ip->daddr);
 
-    // 4.d) Compute host-order dst
-    __u32 dst_host = bpf_ntohl(ip->daddr);
+    // 4.d) Use network-order dst for lookups
+    __be32 dst_n = ip->daddr;
 
     // 4.e) Pass router-local IPs
-    __be32 r1 = (__be32)bpf_htonl((10 << 24) | (0 << 16) | (0 << 8) | 254);
-    __be32 r2 = (__be32)bpf_htonl((10 << 24) | (1 << 16) | (0 << 8) | 254);
-    if (ip->daddr == r1 || ip->daddr == r2)
+    __be32 r1 = bpf_htonl((10 << 24) | (0 << 16) | (0 << 8) | 254);
+    __be32 r2 = bpf_htonl((10 << 24) | (1 << 16) | (0 << 8) | 254);
+    if (dst_n == r1 || dst_n == r2)
         return XDP_PASS;
 
     // 4.f) LPM-trie lookup
-    struct route_key key = {.prefixlen = 32, .addr = dst_host};
+    struct route_key key = {.prefixlen = 32, .addr = dst_n};
     struct next_hop *nh = NULL;
 #pragma unroll
     for (int i = 32; i > 0; i--)
@@ -133,7 +133,6 @@ int router(struct xdp_md *ctx)
     LOG("-> ifindex %u, gateway %pI4", nh->ifindex, &nh->gateway);
 
     // 4.g) Rewrite Ethernet header
-    // Log original MACs
     LOG("orig src %02x:%02x:%02x:%02x:%02x:%02x",
         eth->h_source[0], eth->h_source[1], eth->h_source[2],
         eth->h_source[3], eth->h_source[4], eth->h_source[5]);
@@ -142,28 +141,26 @@ int router(struct xdp_md *ctx)
         eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
 
     struct ifmac *src = bpf_map_lookup_elem(&ifmap, &nh->ifindex);
-    if (!src)
-    {
-        LOG("missing ifmap entry for ifindex %u", nh->ifindex);
-    }
-    else
+    if (src)
     {
         __builtin_memcpy(eth->h_source, src->mac, 6);
     }
-
-    // Determine which IP to use for neighbor lookup: gateway or direct dest
-    __u32 neigh_ip = nh->gateway ? nh->gateway : dst_host;
-    struct neighbor *dst = bpf_map_lookup_elem(&neigh_map, &neigh_ip);
-    if (!dst)
-    {
-        LOG("missing neigh entry for ip %pI4", &neigh_ip);
-    }
     else
+    {
+        LOG("missing ifmap entry for ifindex %u", nh->ifindex);
+    }
+
+    __be32 neigh_ip = dst_n;
+    struct neighbor *dst = bpf_map_lookup_elem(&neigh_map, &neigh_ip);
+    if (dst)
     {
         __builtin_memcpy(eth->h_dest, dst->mac, 6);
     }
+    else
+    {
+        LOG("missing neigh entry for ip %pI4", &neigh_ip);
+    }
 
-    // Log new MACs
     LOG("new    src %02x:%02x:%02x:%02x:%02x:%02x",
         eth->h_source[0], eth->h_source[1], eth->h_source[2],
         eth->h_source[3], eth->h_source[4], eth->h_source[5]);
@@ -171,16 +168,14 @@ int router(struct xdp_md *ctx)
         eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
         eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
 
-    // 4.h) Manual TTL decrement + checksum fix + checksum fix
+    // 4.h) Manual TTL decrement + checksum fix
     __u32 old_ttl_be = (__u32)ip->ttl << 8;
     __u32 old_csum32 = (__u32)ip->check;
     __u32 csum_diff = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),
                                     &old_csum32, sizeof(old_csum32), 0);
-    // Log checksum before
     LOG("old csum 0x%04x, diff %u", old_csum32, csum_diff);
     ip->ttl--;
     ip->check = ~(__sum16)csum_diff;
-    // Log checksum after
     LOG("new csum 0x%04x", ip->check);
 
     // 4.i) Redirect
