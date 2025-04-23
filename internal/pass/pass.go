@@ -1,9 +1,11 @@
 package pass
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 
+	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 )
 
@@ -63,4 +65,36 @@ func (objs PassObjects) GetPacketsNumber(action XDPAction) (uint64, error) {
 		return 0, fmt.Errorf("failed to lookup map: %s", err)
 	}
 	return value.Packets, nil
+}
+
+type RouteOpts struct {
+	Prefixlen uint32
+	Dst       net.IP
+	Ifindex   uint32
+	Gateway   net.IP
+}
+
+func (objs PassObjects) UpdateRoute(opts *RouteOpts) error {
+	dst4 := opts.Dst.To4()
+	if dst4 == nil {
+		return fmt.Errorf("destination is not IPv4: %v", opts.Dst)
+	}
+	gw4 := opts.Gateway.To4()
+	if gw4 == nil {
+		return fmt.Errorf("gateway is not IPv4: %v", opts.Gateway)
+	}
+
+	key := PassRouteKey{
+		Prefixlen: opts.Prefixlen,
+		Addr:      binary.BigEndian.Uint32(dst4),
+	}
+	value := PassNextHop{
+		Ifindex: opts.Ifindex,
+		Gateway: binary.BigEndian.Uint32(gw4),
+	}
+
+	if err := objs.RoutesMap.Update(&key, &value, ebpf.UpdateAny); err != nil {
+		return fmt.Errorf("failed to update routes_map entry: %w", err)
+	}
+	return nil
 }
