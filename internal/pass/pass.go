@@ -37,12 +37,30 @@ func Load(iface *net.Interface) (*PassProgram, error) {
 	return program, nil
 }
 
-func (objs PassObjects) GetBytesNumber() (uint64, error) {
-	var key uint32 = 0
+type XDPAction uint32
+
+const (
+	XDP_ABORTED XDPAction = iota
+	XDP_DROP
+	XDP_PASS
+	XDP_TX
+	XDP_REDIRECT
+)
+
+func (objs PassObjects) GetBytesNumber(action XDPAction) (uint64, error) {
 	var value PassDatarec
-	err := objs.XdpStatsMap.Lookup(key, &value)
+	err := objs.XdpStatsMap.Lookup(uint32(action), &value)
 	if err != nil {
 		return 0, fmt.Errorf("failed to lookup map: %s", err)
 	}
 	return value.Bytes, nil
+}
+
+func (objs PassObjects) GetPacketsNumber(action XDPAction) (uint64, error) {
+	var value PassDatarec
+	err := objs.XdpStatsMap.Lookup(uint32(action), &value)
+	if err != nil {
+		return 0, fmt.Errorf("failed to lookup map: %s", err)
+	}
+	return value.Packets, nil
 }

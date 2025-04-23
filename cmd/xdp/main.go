@@ -44,13 +44,18 @@ func main() {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
-		bytes, err := program.Objs.GetBytesNumber()
+		bytes, err := program.Objs.GetBytesNumber(pass.XDP_PASS)
 		if err != nil {
-			log.Printf("Error getting bytes number: %v", err)
+			log.Printf("Error getting bytes number (XDP_PASS): %v", err)
 			continue
 		}
 		fmt.Println("Bytes number:", bytes)
-		time.Sleep(1 * time.Second)
+		packets, err := program.Objs.GetPacketsNumber(pass.XDP_PASS)
+		if err != nil {
+			log.Printf("Error getting packets number (XDP_PASS): %v", err)
+			continue
+		}
+		fmt.Println("Packets number:", packets)
 	}
 
 	select {}
