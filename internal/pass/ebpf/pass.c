@@ -56,7 +56,7 @@ int router(struct xdp_md *ctx)
     void *data_end = (void *)(long)ctx->data_end;
 
     /* increment counters for PASS action */
-    __u32 action = XDP_PASS;
+    __u32 action = XDP_DROP;
     struct datarec *rec = bpf_map_lookup_elem(&xdp_stats_map, &action);
     if (rec)
     {
