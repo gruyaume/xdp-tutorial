@@ -17,6 +17,10 @@ type PassDatarec struct {
 	Bytes   uint64
 }
 
+type PassIfmac struct{ Mac [6]uint8 }
+
+type PassNeighbor struct{ Mac [6]uint8 }
+
 type PassNextHop struct {
 	Ifindex uint32
 	Gateway uint32
@@ -76,6 +80,8 @@ type PassProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type PassMapSpecs struct {
+	Ifmap       *ebpf.MapSpec `ebpf:"ifmap"`
+	NeighMap    *ebpf.MapSpec `ebpf:"neigh_map"`
 	RoutesMap   *ebpf.MapSpec `ebpf:"routes_map"`
 	XdpStatsMap *ebpf.MapSpec `ebpf:"xdp_stats_map"`
 }
@@ -106,12 +112,16 @@ func (o *PassObjects) Close() error {
 //
 // It can be passed to LoadPassObjects or ebpf.CollectionSpec.LoadAndAssign.
 type PassMaps struct {
+	Ifmap       *ebpf.Map `ebpf:"ifmap"`
+	NeighMap    *ebpf.Map `ebpf:"neigh_map"`
 	RoutesMap   *ebpf.Map `ebpf:"routes_map"`
 	XdpStatsMap *ebpf.Map `ebpf:"xdp_stats_map"`
 }
 
 func (m *PassMaps) Close() error {
 	return _PassClose(
+		m.Ifmap,
+		m.NeighMap,
 		m.RoutesMap,
 		m.XdpStatsMap,
 	)
