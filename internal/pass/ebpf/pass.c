@@ -89,13 +89,21 @@ int router(struct xdp_md *ctx)
 
     /* 1) Pass anything destined to 10.0.0.1 right up to the kernel: */
     //  10.0.0.1 in network order is 0x0A000001
-    if (ip->daddr == (__be32)0x0A000001)
+    /* Convert dst to host-endian for comparisons/lookups */
+    __u32 dst_host = bpf_ntohl(ip->daddr);
+
+    /* 1) Pass anything destined to 10.0.0.1 right up to the kernel */
+    const __u32 MY_IP = (10 << 24) | (0 << 16) | (0 << 8) | 1;
+    if (dst_host == MY_IP)
     {
         return XDP_PASS;
     }
 
     /* lookup route */
-    struct route_key key = {.prefixlen = 32, .addr = ip->daddr};
+    struct route_key key = {
+        .prefixlen = 32,
+        .addr = dst_host, /* use host‐order value */
+    };
     struct next_hop *nh = NULL;
 #pragma unroll
     for (int i = 32; i > 0; i--)
