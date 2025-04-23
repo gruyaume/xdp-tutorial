@@ -32,10 +32,6 @@ func Load(iface *net.Interface) (*PassProgram, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to attach XDP program")
 	}
-	err = objs.RoutesMap.Pin("/sys/fs/bpf/routes_map")
-	if err != nil {
-		return nil, fmt.Errorf("failed to pin routes_map: %s", err)
-	}
 	program := &PassProgram{
 		Link: l,
 		Objs: objs,
