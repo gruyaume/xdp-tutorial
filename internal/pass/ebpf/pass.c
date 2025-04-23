@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
@@ -8,34 +9,82 @@
 #define LOG(fmt, ...) bpf_printk(fmt "\n", ##__VA_ARGS__)
 #define LOG_IP(msg, ip) bpf_printk(msg " %pI4\n", ip)
 
-#ifndef XDP_ACTION_MAX
-#define XDP_ACTION_MAX (XDP_REDIRECT + 1)
-#endif
+/*----------------------------------------------------------
+ * IPv4 checksum helpers
+ *---------------------------------------------------------*/
+#define MAX_CHECKING 4    /* bound for carry folding */
+#define MAX_CSUM_WORDS 30 /* up to a 60-byte IPv4 header */
+
+static inline __u16 csum_fold_helper(__u32 csum)
+{
+    for (__u8 i = 0; (csum >> 16) && i < MAX_CHECKING; i++)
+        csum = (csum & 0xFFFF) + (csum >> 16);
+    return ~csum;
+}
+
+static __always_inline __u32 sum16(const void *data,
+                                   __u32 size,
+                                   const void *data_end)
+{
+    __u32 s = 0;
+    __u16 *buf = (__u16 *)data;
+
+/* force a 30-way unroll */
+#pragma unroll 30
+    for (int i = 0; i < MAX_CSUM_WORDS; i++)
+    {
+        if ((__u32)(2 * i) >= size)
+            break;
+        if ((void *)(buf + 1) > data_end)
+            return 0;
+        s += *buf++;
+    }
+
+    return s;
+}
+
+static inline __u16 ip_checksum(void *data, void *data_end)
+{
+    struct iphdr *ip = data;
+    __u32 hdr_len = ip->ihl * 4;
+
+    /* bounds-check full header */
+    if ((void *)ip + hdr_len > data_end)
+        return 0;
+
+    /* zero old checksum */
+    ip->check = 0;
+
+    /* sum & fold, then convert to network order */
+    __u32 raw = sum16(ip, hdr_len, data_end);
+    return bpf_htons(csum_fold_helper(raw));
+}
+
+/*----------------------------------------------------------
+ * Maps
+ *---------------------------------------------------------*/
 
 // 1) Per-action counters
 struct datarec
 {
-    __u64 packets;
-    __u64 bytes;
+    __u64 packets, bytes;
 };
 struct
 {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __type(key, __u32);
     __type(value, struct datarec);
-    __uint(max_entries, XDP_ACTION_MAX);
+    __uint(max_entries, XDP_REDIRECT + 1);
 } xdp_stats_map SEC(".maps");
 
 // 2) LPM-trie for routing
 struct route_key
 {
-    __u32 prefixlen;
-    __u32 addr;
+    __u32 prefixlen, addr;
 };
 struct next_hop
 {
-    __u32 ifindex;
-    __u32 gateway;
+    __u32 ifindex, gateway;
 };
 struct
 {
@@ -46,7 +95,7 @@ struct
     __type(value, struct next_hop);
 } routes_map SEC(".maps");
 
-// 3) MAC-rewrite helper maps
+// 3) MAC-rewrite helpers
 struct ifmac
 {
     __u8 mac[6];
@@ -72,116 +121,83 @@ struct
     __type(value, struct neighbor);
 } neigh_map SEC(".maps");
 
-// 4) XDP entry point
+/*----------------------------------------------------------
+ * XDP entry point
+ *---------------------------------------------------------*/
 SEC("xdp")
 int router(struct xdp_md *ctx)
 {
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
 
-    // 4.a) Default-DROP, bump DROP counter
-    __u32 action = XDP_DROP;
-    struct datarec *r = bpf_map_lookup_elem(&xdp_stats_map, &action);
-    if (r)
+    // 0) DROP by default, bump counter
+    __u32 act = XDP_DROP;
+    struct datarec *rec = bpf_map_lookup_elem(&xdp_stats_map, &act);
+    if (rec)
     {
-        __sync_fetch_and_add(&r->packets, 1);
-        __sync_fetch_and_add(&r->bytes, data_end - data);
+        __sync_fetch_and_add(&rec->packets, 1);
+        __sync_fetch_and_add(&rec->bytes, data_end - data);
     }
 
-    // 4.b) L2 parse
+    // 1) Parse Ethernet
     struct ethhdr *eth = data;
     if ((void *)eth + sizeof(*eth) > data_end)
-        return action;
+        return XDP_DROP;
+
     __u16 h_proto = bpf_ntohs(eth->h_proto);
     if (h_proto == ETH_P_ARP)
         return XDP_PASS;
     if (h_proto != ETH_P_IP)
-        return action;
+        return XDP_DROP;
 
-    // 4.c) L3 parse
+    // 2) Parse IPv4
     struct iphdr *ip = data + sizeof(*eth);
     if ((void *)ip + sizeof(*ip) > data_end)
-        return action;
+        return XDP_DROP;
     LOG_IP("saw IPv4 pkt, dst", &ip->daddr);
 
-    // 4.d) Convert network-order daddr to host-order key
-    __u32 dst_key = bpf_ntohl(ip->daddr);
-
-    // 4.e) Pass router-local IPs directly
-    if (dst_key == (10 << 24 | 0 << 16 | 0 << 8 | 254) ||
-        dst_key == (10 << 24 | 1 << 16 | 0 << 8 | 254))
-    {
+    __u32 dst = bpf_ntohl(ip->daddr);
+    // pass router-local addrs 10.0.0.254, 10.1.0.254
+    if (dst == 0x0A0000FE || dst == 0x0A0100FE)
         return XDP_PASS;
-    }
 
-    // 4.f) LPM-trie lookup
-    struct route_key key = {.prefixlen = 32, .addr = dst_key};
+    // 3) LPM lookup
+    struct route_key rk = {.prefixlen = 32, .addr = dst};
     struct next_hop *nh = NULL;
 #pragma unroll
     for (int i = 32; i > 0; i--)
     {
-        key.prefixlen = i;
-        nh = bpf_map_lookup_elem(&routes_map, &key);
+        rk.prefixlen = i;
+        nh = bpf_map_lookup_elem(&routes_map, &rk);
         if (nh)
             break;
     }
     if (!nh)
     {
         LOG_IP("no route for dst", &ip->daddr);
-        return action;
+        return XDP_DROP;
     }
-    LOG_IP("route found for dst", &ip->daddr);
     LOG("-> ifindex %u, gateway %pI4", nh->ifindex, &nh->gateway);
 
-    // 4.g) Rewrite Ethernet header with logs
-    LOG("orig src %02x:%02x:%02x:%02x:%02x:%02x",
-        eth->h_source[0], eth->h_source[1], eth->h_source[2],
-        eth->h_source[3], eth->h_source[4], eth->h_source[5]);
-    LOG("orig dst %02x:%02x:%02x:%02x:%02x:%02x",
-        eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
-        eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
-
+    // 4) Rewrite L2
     struct ifmac *src = bpf_map_lookup_elem(&ifmap, &nh->ifindex);
     if (src)
-    {
         __builtin_memcpy(eth->h_source, src->mac, 6);
-    }
     else
-    {
-        LOG("missing ifmap entry for ifindex %u", nh->ifindex);
-    }
-    struct neighbor *dst = bpf_map_lookup_elem(&neigh_map, &dst_key);
-    if (dst)
-    {
-        __builtin_memcpy(eth->h_dest, dst->mac, 6);
-    }
+        LOG("missing ifmap for idx %u", nh->ifindex);
+
+    struct neighbor *dst_n = bpf_map_lookup_elem(&neigh_map, &dst);
+    if (dst_n)
+        __builtin_memcpy(eth->h_dest, dst_n->mac, 6);
     else
-    {
-        LOG("missing neigh entry for ip %pI4", &dst_key);
-    }
-    LOG("new    src %02x:%02x:%02x:%02x:%02x:%02x",
-        eth->h_source[0], eth->h_source[1], eth->h_source[2],
-        eth->h_source[3], eth->h_source[4], eth->h_source[5]);
-    LOG("new    dst %02x:%02x:%02x:%02x:%02x:%02x",
-        eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
-        eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
+        LOG("missing neigh for %pI4", &dst);
 
-    // 4.h) Correct TTL decrement + checksum update
-    __u32 old_ttl_be = (__u32)ip->ttl << 8; // TTL is high byte of a 16-bit word (TTL|PROTO)
-    __u32 new_ttl_be = (__u32)(ip->ttl - 1) << 8;
-    __u32 old_csum = (__u32)ip->check; // existing checksum in network byte order
+    // 5) TTL-- + full IPv4 checksum recompute
+    ip->ttl--;
+    ip->check = ip_checksum(ip, data_end);
+    LOG("new TTL %u, new csum 0x%04x", ip->ttl, bpf_ntohs(ip->check));
 
-    // compute: new_csum = old_csum - old_word + new_word, with wraparound
-    __u32 new_csum = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),
-                                   &new_ttl_be, sizeof(new_ttl_be),
-                                   old_csum);
-
-    ip->ttl--;                     // decrement TTL in place
-    ip->check = (__sum16)new_csum; // write back new checksum
-
-    LOG("updated TTL -> %u, checksum -> 0x%04x", ip->ttl, ip->check);
-
-    // 4.i) Redirect
+    // 6) Redirect out the chosen interface
     return bpf_redirect(nh->ifindex, 0);
 }
 
