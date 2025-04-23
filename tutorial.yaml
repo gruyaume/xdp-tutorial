@@ -1,1 +1,1 @@
-interface: eno1
+interfaces: [eno1, eno2]

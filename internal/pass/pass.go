@@ -12,29 +12,37 @@ import (
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go Pass ebpf/pass.c --
 
 type PassProgram struct {
-	Link link.Link
-	Objs PassObjects
+	Links []link.Link
+	Objs  PassObjects
 }
 
-func Load(iface *net.Interface) (*PassProgram, error) {
+func Load(ifaces []string) (*PassProgram, error) {
 	objs := PassObjects{}
 	err := LoadPassObjects(&objs, nil)
 	if err != nil {
 		return nil, fmt.Errorf("loading objects: %s", err)
 	}
+	links := make([]link.Link, 0)
+	for _, ifaceName := range ifaces {
+		iface, err := net.InterfaceByName(ifaceName)
+		if err != nil {
+			return nil, fmt.Errorf("getting interface %s: %s", ifaceName, err)
+		}
+		xdpOpts := link.XDPOptions{
+			Program:   objs.PassPrograms.Router,
+			Interface: iface.Index,
+			Flags:     link.XDPGenericMode,
+		}
+		l, err := link.AttachXDP(xdpOpts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to attach XDP program")
+		}
+		links = append(links, l)
+	}
 
-	xdpOpts := link.XDPOptions{
-		Program:   objs.PassPrograms.Router,
-		Interface: iface.Index,
-		Flags:     link.XDPGenericMode,
-	}
-	l, err := link.AttachXDP(xdpOpts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to attach XDP program")
-	}
 	program := &PassProgram{
-		Link: l,
-		Objs: objs,
+		Links: links,
+		Objs:  objs,
 	}
 	return program, nil
 }

@@ -13,19 +13,33 @@ sudo apt -y install clang llvm gcc-multilib libbpf-dev
 ### 2. Create environment
 
 ```shell
-sudo ip netns add A
-sudo ip netns add B
+# 1. Create namespaces
+for ns in hostA router hostB; do
+  sudo ip netns add $ns
+  sudo ip netns exec $ns ip link set lo up
+done
 
-# veth0 in A <-> veth1 in B
-sudo ip link add veth0 type veth peer name veth1
-sudo ip link set veth0 netns A
-sudo ip link set veth1 netns B
+# 2. Create veths
+sudo ip link add vethA type veth peer name vethR1
+sudo ip link add vethB type veth peer name vethR2
 
-sudo ip netns exec A ip addr add 10.0.0.1/24 dev veth0
-sudo ip netns exec A ip link set veth0 up
+sudo ip link set vethA netns hostA
+sudo ip link set vethR1 netns router
+sudo ip link set vethB netns hostB
+sudo ip link set vethR2 netns router
 
-sudo ip netns exec B ip addr add 10.0.0.254/24 dev veth1
-sudo ip netns exec B ip link set veth1 up
+# 3. Assign addresses & bring up
+sudo ip netns exec hostA ip addr add 10.0.0.1/24 dev vethA
+sudo ip netns exec hostA ip link set vethA up
+
+sudo ip netns exec router ip addr add 10.0.0.254/24 dev vethR1
+sudo ip netns exec router ip link set vethR1 up
+
+sudo ip netns exec hostB ip addr add 10.1.0.1/24 dev vethB
+sudo ip netns exec hostB ip link set vethB up
+
+sudo ip netns exec router ip addr add 10.1.0.254/24 dev vethR2
+sudo ip netns exec router ip link set vethR2 up
 ```
 
 ### 3. Build and run the project
@@ -33,5 +47,5 @@ sudo ip netns exec B ip link set veth1 up
 
 ```shell
 go build cmd/xdp/main.go
-sudo ./main --config tutorial.yaml
+sudo ip netns exec router ./main --config tutorial.yaml
 ```

@@ -7,11 +7,11 @@ import (
 )
 
 type ConfigYaml struct {
-	Interface string `yaml:"interface"`
+	Interfaces []string `yaml:"interfaces"`
 }
 
 type Config struct {
-	Interface string
+	Interfaces []string
 }
 
 func Load(path string) (Config, error) {
@@ -26,6 +26,6 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return config, err
 	}
-	config.Interface = configYaml.Interface
+	config.Interfaces = configYaml.Interfaces
 	return config, nil
 }
