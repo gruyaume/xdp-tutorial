@@ -37,7 +37,7 @@ static __always_inline __u32 sum16(const void *data,
             break;
         if ((void *)(buf + 1) > data_end)
             return 0;
-        s += *buf++;
+        s += bpf_ntohs(*buf++);
     }
 
     return s;
