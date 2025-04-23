@@ -104,17 +104,19 @@ int router(struct xdp_md *ctx)
         return action;
     LOG_IP("saw IPv4 pkt, dst", &ip->daddr);
 
-    // 4.d) Use network-order dst for lookups
-    __be32 dst_n = ip->daddr;
+    // 4.d) Convert network-order daddr to host-order key
+    __u32 dst_key = bpf_ntohl(ip->daddr);
 
-    // 4.e) Pass router-local IPs
-    __be32 r1 = bpf_htonl((10 << 24) | (0 << 16) | (0 << 8) | 254);
-    __be32 r2 = bpf_htonl((10 << 24) | (1 << 16) | (0 << 8) | 254);
-    if (dst_n == r1 || dst_n == r2)
+    // 4.e) Pass router-local IPs directly
+    // For example 10.0.0.254 and 10.1.0.254 in big-endian network order
+    if (dst_key == (10 << 24 | 0 << 16 | 0 << 8 | 254) ||
+        dst_key == (10 << 24 | 1 << 16 | 0 << 8 | 254))
+    {
         return XDP_PASS;
+    }
 
     // 4.f) LPM-trie lookup
-    struct route_key key = {.prefixlen = 32, .addr = dst_n};
+    struct route_key key = {.prefixlen = 32, .addr = dst_key};
     struct next_hop *nh = NULL;
 #pragma unroll
     for (int i = 32; i > 0; i--)
@@ -133,50 +135,24 @@ int router(struct xdp_md *ctx)
     LOG("-> ifindex %u, gateway %pI4", nh->ifindex, &nh->gateway);
 
     // 4.g) Rewrite Ethernet header
-    LOG("orig src %02x:%02x:%02x:%02x:%02x:%02x",
-        eth->h_source[0], eth->h_source[1], eth->h_source[2],
-        eth->h_source[3], eth->h_source[4], eth->h_source[5]);
-    LOG("orig dst %02x:%02x:%02x:%02x:%02x:%02x",
-        eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
-        eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
-
     struct ifmac *src = bpf_map_lookup_elem(&ifmap, &nh->ifindex);
     if (src)
     {
         __builtin_memcpy(eth->h_source, src->mac, 6);
     }
-    else
-    {
-        LOG("missing ifmap entry for ifindex %u", nh->ifindex);
-    }
-
-    __be32 neigh_ip = dst_n;
-    struct neighbor *dst = bpf_map_lookup_elem(&neigh_map, &neigh_ip);
+    struct neighbor *dst = bpf_map_lookup_elem(&neigh_map, &dst_key);
     if (dst)
     {
         __builtin_memcpy(eth->h_dest, dst->mac, 6);
     }
-    else
-    {
-        LOG("missing neigh entry for ip %pI4", &neigh_ip);
-    }
-
-    LOG("new    src %02x:%02x:%02x:%02x:%02x:%02x",
-        eth->h_source[0], eth->h_source[1], eth->h_source[2],
-        eth->h_source[3], eth->h_source[4], eth->h_source[5]);
-    LOG("new    dst %02x:%02x:%02x:%02x:%02x:%02x",
-        eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
-        eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
 
     // 4.h) Manual TTL decrement + checksum fix
     __u32 old_ttl_be = (__u32)ip->ttl << 8;
     __u32 old_csum32 = (__u32)ip->check;
-    __u32 csum_diff = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),
-                                    &old_csum32, sizeof(old_csum32), 0);
-    LOG("old csum 0x%04x, diff %u", old_csum32, csum_diff);
+    __u32 diff = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),
+                               &old_csum32, sizeof(old_csum32), 0);
     ip->ttl--;
-    ip->check = ~(__sum16)csum_diff;
-    LOG("new csum 0x%04x", ip->check);
+    ip->check = ~(__sum16)diff;
 
     // 4.i) Redirect
     return bpf_redirect(nh->ifindex, 0);
