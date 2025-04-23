@@ -150,10 +150,13 @@ int router(struct xdp_md *ctx)
     {
         __builtin_memcpy(eth->h_source, src->mac, 6);
     }
-    struct neighbor *dst = bpf_map_lookup_elem(&neigh_map, &nh->gateway);
+
+    // Determine which IP to use for neighbor lookup: gateway or direct dest
+    __u32 neigh_ip = nh->gateway ? nh->gateway : dst_host;
+    struct neighbor *dst = bpf_map_lookup_elem(&neigh_map, &neigh_ip);
     if (!dst)
     {
-        LOG("missing neigh entry for gateway %pI4", &nh->gateway);
+        LOG("missing neigh entry for ip %pI4", &neigh_ip);
     }
     else
     {
@@ -168,7 +171,7 @@ int router(struct xdp_md *ctx)
         eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
         eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
 
-    // 4.h) Manual TTL decrement + checksum fix
+    // 4.h) Manual TTL decrement + checksum fix + checksum fix
     __u32 old_ttl_be = (__u32)ip->ttl << 8;
     __u32 old_csum32 = (__u32)ip->check;
     __u32 csum_diff = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),

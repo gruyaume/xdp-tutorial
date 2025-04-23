@@ -97,11 +97,6 @@ func main() {
 		log.Printf("Error updating neighbor: %v", err)
 		return
 	}
-	// send to hostB (10.1.0.1) via vethR2
-	// objs.UpdateRoute(32, net.ParseIP("10.1.0.1"), r2Idx, net.IPv4(0, 0, 0, 0))
-
-	// // return path: send back to hostA (10.0.0.1) via vethR1
-	// objs.UpdateRoute(32, net.ParseIP("10.0.0.1"), r1Idx, net.IPv4(0, 0, 0, 0))
 
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
