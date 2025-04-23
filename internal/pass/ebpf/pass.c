@@ -1,6 +1,7 @@
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
+#include <linux/if_arp.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
@@ -67,17 +68,24 @@ int router(struct xdp_md *ctx)
         __sync_fetch_and_add(&rec->bytes, data_end - data);
     }
 
-    /* parse ethernet */
+    /* parse ethernet header */
     struct ethhdr *eth = data;
     if ((void *)eth + sizeof(*eth) > data_end)
         return action;
-    if (bpf_ntohs(eth->h_proto) != ETH_P_IP)
+    __u16 h_proto = bpf_ntohs(eth->h_proto);
+    /* allow ARP through so kernel can resolve neighbor */
+    if (h_proto == ETH_P_ARP)
+        return XDP_PASS;
+    if (h_proto != ETH_P_IP)
         return action;
 
     /* parse IPv4 */
     struct iphdr *ip = data + sizeof(*eth);
     if ((void *)ip + sizeof(*ip) > data_end)
         return action;
+
+    /* debug: saw IPv4 packet */
+    LOG_IP("saw IPv4 pkt, dst", &ip->daddr);
 
     /* lookup route */
     struct route_key key = {.prefixlen = 32, .addr = ip->daddr};
@@ -92,11 +100,10 @@ int router(struct xdp_md *ctx)
     }
     if (!nh)
     {
-        /* print human-readable IPv4 */
         LOG_IP("no route for dst", &ip->daddr);
         return action;
     }
-    LOG_IP("route found for dst, ifindex", &ip->daddr);
+    LOG_IP("route found for dst", &ip->daddr);
     LOG("-> ifindex %u, gateway %pI4", nh->ifindex, &nh->gateway);
 
     /* decrement TTL + checksum */
