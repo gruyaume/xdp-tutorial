@@ -69,6 +69,34 @@ func main() {
 		log.Printf("Error updating route: %v", err)
 		return
 	}
+
+	err = program.Objs.UpdateInterface(r1Idx)
+	if err != nil {
+		log.Printf("Error updating interface: %v", err)
+		return
+	}
+
+	err = program.Objs.UpdateInterface(r2Idx)
+	if err != nil {
+		log.Printf("Error updating interface: %v", err)
+		return
+	}
+	err = program.Objs.UpdateNeighbor(&pass.NeighborOpts{
+		IP:  "10.0.0.1",
+		MAC: "c6:9f:fb:e6:cc:1f",
+	})
+	if err != nil {
+		log.Printf("Error updating neighbor: %v", err)
+		return
+	}
+	err = program.Objs.UpdateNeighbor(&pass.NeighborOpts{
+		IP:  "10.1.0.1",
+		MAC: "8a:93:d5:28:9e:35",
+	})
+	if err != nil {
+		log.Printf("Error updating neighbor: %v", err)
+		return
+	}
 	// send to hostB (10.1.0.1) via vethR2
 	// objs.UpdateRoute(32, net.ParseIP("10.1.0.1"), r2Idx, net.IPv4(0, 0, 0, 0))
 

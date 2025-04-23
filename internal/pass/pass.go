@@ -141,3 +141,32 @@ func (objs PassObjects) ListRoutes() ([]Route, error) {
 	}
 	return routes, nil
 }
+
+func (objs PassObjects) UpdateInterface(ifi *net.Interface) error {
+	key := uint32(ifi.Index)
+	val := PassIfmac{}
+	copy(val.Mac[:], ifi.HardwareAddr)
+	err := objs.Ifmap.Update(&key, &val, ebpf.UpdateAny)
+	if err != nil {
+		return fmt.Errorf("failed to update ifmap entry: %w", err)
+	}
+	return nil
+}
+
+type NeighborOpts struct {
+	IP  string
+	MAC string
+}
+
+func (objs PassObjects) UpdateNeighbor(opts *NeighborOpts) error {
+	ip := net.ParseIP(opts.IP).To4()
+	m, _ := net.ParseMAC(opts.MAC)
+	key := binary.BigEndian.Uint32(ip)
+	val := PassNeighbor{}
+	copy(val.Mac[:], m)
+	err := objs.NeighMap.Update(&key, &val, ebpf.UpdateAny)
+	if err != nil {
+		return fmt.Errorf("failed to update neigh_map entry: %w", err)
+	}
+	return nil
+}
