@@ -108,7 +108,6 @@ int router(struct xdp_md *ctx)
     __u32 dst_key = bpf_ntohl(ip->daddr);
 
     // 4.e) Pass router-local IPs directly
-    // For example 10.0.0.254 and 10.1.0.254 in big-endian network order
     if (dst_key == (10 << 24 | 0 << 16 | 0 << 8 | 254) ||
         dst_key == (10 << 24 | 1 << 16 | 0 << 8 | 254))
     {
@@ -134,25 +133,48 @@ int router(struct xdp_md *ctx)
     LOG_IP("route found for dst", &ip->daddr);
     LOG("-> ifindex %u, gateway %pI4", nh->ifindex, &nh->gateway);
 
-    // 4.g) Rewrite Ethernet header
+    // 4.g) Rewrite Ethernet header with logs
+    LOG("orig src %02x:%02x:%02x:%02x:%02x:%02x",
+        eth->h_source[0], eth->h_source[1], eth->h_source[2],
+        eth->h_source[3], eth->h_source[4], eth->h_source[5]);
+    LOG("orig dst %02x:%02x:%02x:%02x:%02x:%02x",
+        eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
+        eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
+
     struct ifmac *src = bpf_map_lookup_elem(&ifmap, &nh->ifindex);
     if (src)
     {
         __builtin_memcpy(eth->h_source, src->mac, 6);
+    }
+    else
+    {
+        LOG("missing ifmap entry for ifindex %u", nh->ifindex);
     }
     struct neighbor *dst = bpf_map_lookup_elem(&neigh_map, &dst_key);
     if (dst)
     {
         __builtin_memcpy(eth->h_dest, dst->mac, 6);
     }
+    else
+    {
+        LOG("missing neigh entry for ip %pI4", &dst_key);
+    }
+    LOG("new    src %02x:%02x:%02x:%02x:%02x:%02x",
+        eth->h_source[0], eth->h_source[1], eth->h_source[2],
+        eth->h_source[3], eth->h_source[4], eth->h_source[5]);
+    LOG("new    dst %02x:%02x:%02x:%02x:%02x:%02x",
+        eth->h_dest[0], eth->h_dest[1], eth->h_dest[2],
+        eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
 
-    // 4.h) Manual TTL decrement + checksum fix
+    // 4.h) Manual TTL decrement + checksum fix with logs
     __u32 old_ttl_be = (__u32)ip->ttl << 8;
     __u32 old_csum32 = (__u32)ip->check;
     __u32 diff = bpf_csum_diff(&old_ttl_be, sizeof(old_ttl_be),
                                &old_csum32, sizeof(old_csum32), 0);
+    LOG("old csum 0x%04x, diff %u", old_csum32, diff);
     ip->ttl--;
     ip->check = ~(__sum16)diff;
+    LOG("new csum 0x%04x", ip->check);
 
     // 4.i) Redirect
     return bpf_redirect(nh->ifindex, 0);
