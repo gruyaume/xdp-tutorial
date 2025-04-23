@@ -9,7 +9,7 @@ import (
 type RouteYaml struct {
 	Dst       string `yaml:"destination"`
 	Prefixlen uint32 `yaml:"prefixlen"`
-	Ifindex   uint32 `yaml:"interface"`
+	Interface string `yaml:"interface"`
 	Gateway   string `yaml:"gateway"`
 }
 
@@ -27,7 +27,7 @@ type ConfigYaml struct {
 type Route struct {
 	Dst       string
 	Prefixlen uint32
-	Ifindex   uint32
+	Interface string
 	Gateway   string
 }
 
@@ -59,7 +59,7 @@ func Load(path string) (Config, error) {
 		config.Routes = append(config.Routes, Route{
 			Dst:       route.Dst,
 			Prefixlen: route.Prefixlen,
-			Ifindex:   route.Ifindex,
+			Interface: route.Interface,
 			Gateway:   route.Gateway,
 		})
 	}

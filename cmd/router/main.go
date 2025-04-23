@@ -39,7 +39,7 @@ func main() {
 	log.Printf("Press Ctrl-C to exit and remove the program")
 
 	for _, route := range config.Routes {
-		dstIface, err := net.InterfaceByName(route.Dst)
+		dstIface, err := net.InterfaceByName(route.Interface)
 		if err != nil {
 			log.Printf("Error getting interface index for %v: %v", dstIface, err)
 			return
