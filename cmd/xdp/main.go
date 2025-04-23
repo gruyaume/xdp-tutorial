@@ -42,10 +42,10 @@ func main() {
 	log.Printf("Press Ctrl-C to exit and remove the program")
 
 	routeOpts := &pass.RouteOpts{
-		Prefixlen: 24,
-		Dst:       net.ParseIP("10.0.0.0"),
+		Prefixlen: 32,
+		Dst:       net.ParseIP("10.0.0.254"),
 		Ifindex:   uint32(iface.Index),
-		Gateway:   net.ParseIP("10.0.0.1"),
+		Gateway:   net.ParseIP("0.0.0.0"),
 	}
 	err = program.Objs.UpdateRoute(routeOpts)
 	if err != nil {
