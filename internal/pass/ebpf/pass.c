@@ -87,6 +87,13 @@ int router(struct xdp_md *ctx)
     /* debug: saw IPv4 packet */
     LOG_IP("saw IPv4 pkt, dst", &ip->daddr);
 
+    /* 1) Pass anything destined to 10.0.0.1 right up to the kernel: */
+    //  10.0.0.1 in network order is 0x0A000001
+    if (ip->daddr == (__be32)0x0A000001)
+    {
+        return XDP_PASS;
+    }
+
     /* lookup route */
     struct route_key key = {.prefixlen = 32, .addr = ip->daddr};
     struct next_hop *nh = NULL;
