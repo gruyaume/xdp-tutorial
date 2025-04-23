@@ -17,6 +17,16 @@ type PassDatarec struct {
 	Bytes   uint64
 }
 
+type PassNextHop struct {
+	Ifindex uint32
+	Gateway uint32
+}
+
+type PassRouteKey struct {
+	Prefixlen uint32
+	Addr      uint32
+}
+
 // LoadPass returns the embedded CollectionSpec for Pass.
 func LoadPass() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_PassBytes)
@@ -59,13 +69,14 @@ type PassSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type PassProgramSpecs struct {
-	Pass *ebpf.ProgramSpec `ebpf:"pass"`
+	Router *ebpf.ProgramSpec `ebpf:"router"`
 }
 
 // PassMapSpecs contains maps before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type PassMapSpecs struct {
+	RoutesMap   *ebpf.MapSpec `ebpf:"routes_map"`
 	XdpStatsMap *ebpf.MapSpec `ebpf:"xdp_stats_map"`
 }
 
@@ -95,11 +106,13 @@ func (o *PassObjects) Close() error {
 //
 // It can be passed to LoadPassObjects or ebpf.CollectionSpec.LoadAndAssign.
 type PassMaps struct {
+	RoutesMap   *ebpf.Map `ebpf:"routes_map"`
 	XdpStatsMap *ebpf.Map `ebpf:"xdp_stats_map"`
 }
 
 func (m *PassMaps) Close() error {
 	return _PassClose(
+		m.RoutesMap,
 		m.XdpStatsMap,
 	)
 }
@@ -114,12 +127,12 @@ type PassVariables struct {
 //
 // It can be passed to LoadPassObjects or ebpf.CollectionSpec.LoadAndAssign.
 type PassPrograms struct {
-	Pass *ebpf.Program `ebpf:"pass"`
+	Router *ebpf.Program `ebpf:"router"`
 }
 
 func (p *PassPrograms) Close() error {
 	return _PassClose(
-		p.Pass,
+		p.Router,
 	)
 }
 

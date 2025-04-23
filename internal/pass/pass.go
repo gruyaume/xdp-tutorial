@@ -22,7 +22,7 @@ func Load(iface *net.Interface) (*PassProgram, error) {
 	}
 
 	xdpOpts := link.XDPOptions{
-		Program:   objs.PassPrograms.Pass,
+		Program:   objs.PassPrograms.Router,
 		Interface: iface.Index,
 		Flags:     link.XDPGenericMode,
 	}
