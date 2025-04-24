@@ -16,8 +16,6 @@ linters:
     - unparam
     - whitespace
     - govet
-  disable:
-    - staticcheck
   exclusions:
     generated: lax
     presets:

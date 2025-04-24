@@ -78,10 +78,7 @@ func Load(path string) (*Config, error) {
 		})
 	}
 	for _, neighbor := range configYaml.Neighbors {
-		config.Neighbors = append(config.Neighbors, Neighbor{
-			IP:  neighbor.IP,
-			Mac: neighbor.Mac,
-		})
+		config.Neighbors = append(config.Neighbors, Neighbor(neighbor))
 	}
 	config.LogLevel = configYaml.LogLevel
 

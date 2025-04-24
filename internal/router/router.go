@@ -25,7 +25,7 @@ func Load(ifaces []*net.Interface) (*RouterProgram, error) {
 	links := make([]link.Link, 0)
 	for _, iface := range ifaces {
 		xdpOpts := link.XDPOptions{
-			Program:   objs.RouterPrograms.Router,
+			Program:   objs.Router,
 			Interface: iface.Index,
 			Flags:     link.XDPGenericMode,
 		}

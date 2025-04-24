@@ -1,6 +1,6 @@
 # Router
 
-An ebpf-based router!
+**A fast eBPF-based router for Linux**
 
 This is mostly exploratory code, and not intended for production use.
 
