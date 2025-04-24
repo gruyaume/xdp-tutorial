@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func NewLogger(level string) (*zap.SugaredLogger, error) {
+func NewLogger(level string) (*zap.Logger, error) {
 	zapConfig := zap.NewDevelopmentConfig()
 
 	logLevel, err := zapcore.ParseLevel(level)
@@ -17,7 +17,6 @@ func NewLogger(level string) (*zap.SugaredLogger, error) {
 
 	zapConfig.Level.SetLevel(logLevel)
 	zapConfig.OutputPaths = []string{"stdout"}
-
 	zapConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 	logger, err := zapConfig.Build()
@@ -25,5 +24,5 @@ func NewLogger(level string) (*zap.SugaredLogger, error) {
 		return nil, err
 	}
 
-	return logger.Sugar(), nil
+	return logger, nil
 }

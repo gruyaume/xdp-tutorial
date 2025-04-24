@@ -8,6 +8,7 @@ import (
 	"github.com/gruyaume/router/internal/config"
 	l "github.com/gruyaume/router/internal/logger"
 	"github.com/gruyaume/router/internal/router"
+	"github.com/gruyaume/router/version"
 	"go.uber.org/zap"
 )
 
@@ -18,6 +19,7 @@ func main() {
 		fmt.Println("Please provide a config file path using -config flag")
 		return
 	}
+
 	config, err := config.Load(*configFilePath)
 	if err != nil {
 		fmt.Println("Error loading config:", err)
@@ -30,21 +32,9 @@ func main() {
 		return
 	}
 
-	if err := Run(config, logger); err != nil {
-		logger.Errorf("Error running router: %v", err)
-		return
-	}
-	defer func() {
-		if err := logger.Sync(); err != nil {
-			fmt.Println("Error syncing logger:", err)
-		}
-	}()
-}
-
-func Run(config *config.Config, logger *zap.SugaredLogger) error {
 	program, err := router.Load(config.Interfaces)
 	if err != nil {
-		return fmt.Errorf("error loading pass XDP program: %w", err)
+		logger.Fatal("Error loading pass XDP program", zap.Error(err))
 	}
 
 	for _, link := range program.Links {
@@ -52,8 +42,8 @@ func Run(config *config.Config, logger *zap.SugaredLogger) error {
 	}
 	defer program.Objs.Close()
 
-	logger.Infof("Attached XDP program to ifaces")
-	logger.Infof("Press Ctrl-C to exit and remove the program")
+	logger.Info("Attached XDP program to ifaces")
+	logger.Info("Press Ctrl-C to exit and remove the program")
 
 	for _, route := range config.Routes {
 		err = program.Objs.UpdateRoute(&router.RouteOpts{
@@ -63,17 +53,17 @@ func Run(config *config.Config, logger *zap.SugaredLogger) error {
 			Gateway:   net.ParseIP(route.Gateway),
 		})
 		if err != nil {
-			return fmt.Errorf("error updating route %s/%d via %s: %w", route.Dst, route.Prefixlen, route.Gateway, err)
+			logger.Fatal("Error updating route", zap.String("dst", route.Dst), zap.Uint32("prefixlen", route.Prefixlen), zap.String("gateway", route.Gateway), zap.Error(err))
 		}
-		logger.Infof("updated route %s/%d via %s", route.Dst, route.Prefixlen, route.Gateway)
+		logger.Info("Updated route", zap.String("dst", route.Dst), zap.Uint32("prefixlen", route.Prefixlen), zap.String("gateway", route.Gateway), zap.String("interface", route.Interface.Name))
 	}
 
 	for _, iface := range config.Interfaces {
 		err = program.Objs.UpdateInterface(iface)
 		if err != nil {
-			return fmt.Errorf("error updating interface %s: %w", iface.Name, err)
+			logger.Fatal("Error updating interface", zap.String("interface", iface.Name), zap.Error(err))
 		}
-		logger.Infof("updated interface %s", iface.Name)
+		logger.Info("Updated interface", zap.String("interface", iface.Name))
 	}
 
 	for _, neighbor := range config.Neighbors {
@@ -82,10 +72,12 @@ func Run(config *config.Config, logger *zap.SugaredLogger) error {
 			MAC: neighbor.Mac,
 		})
 		if err != nil {
-			return fmt.Errorf("error updating neighbor %s: %w", neighbor.IP, err)
+			logger.Fatal("Error updating neighbor", zap.String("ip", neighbor.IP), zap.Error(err))
 		}
-		logger.Infof("updated neighbor %s", neighbor.IP)
+		logger.Info("Updated neighbor", zap.String("ip", neighbor.IP), zap.String("mac", neighbor.Mac))
 	}
 
+	v := version.GetVersion()
+	logger.Info("Started Router", zap.String("version", v))
 	select {}
 }
