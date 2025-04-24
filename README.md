@@ -4,9 +4,9 @@ An ebpf-based router!
 
 This is mostly exploratory code, and not intended for production use.
 
-## Usage
+## Tutorials
 
-### On 1 host using network namespaces
+### Installing Router on 1 host using network namespaces
 
 #### 1. Install Pre-requisites
 
@@ -58,7 +58,7 @@ go build cmd/router/main.go
 sudo ip netns exec router ./main --config router.yaml
 ```
 
-### On 3 hosts using Multipass
+### Installing Router and validating it using Multipass
 
 #### 1. Create environment
 
@@ -188,4 +188,33 @@ Run the router:
 
 ```shell
 sudo ./main --config router.yaml
+```
+
+## Reference
+
+### Performance
+
+Using the Multipass setup, I am able to achieve **over 3 Gbps throughput** between host1 and host2, going through the router.
+
+```shell
+ubuntu@host1:~$ iperf3 -c 20.0.0.41 --bind-dev ens4
+Connecting to host 20.0.0.41, port 5201
+[  5] local 10.0.0.144 port 33702 connected to 20.0.0.41 port 5201
+[ ID] Interval           Transfer     Bitrate         Retr  Cwnd
+[  5]   0.00-1.00   sec   403 MBytes  3.37 Gbits/sec  509    520 KBytes       
+[  5]   1.00-2.00   sec   404 MBytes  3.39 Gbits/sec  302    457 KBytes       
+[  5]   2.00-3.00   sec   404 MBytes  3.39 Gbits/sec  151    687 KBytes       
+[  5]   3.00-4.00   sec   435 MBytes  3.65 Gbits/sec   81    940 KBytes       
+[  5]   4.00-5.00   sec   417 MBytes  3.50 Gbits/sec  247    433 KBytes       
+[  5]   5.00-6.00   sec   403 MBytes  3.38 Gbits/sec  156    496 KBytes       
+[  5]   6.00-7.00   sec   416 MBytes  3.49 Gbits/sec  164    550 KBytes       
+[  5]   7.00-8.00   sec   403 MBytes  3.38 Gbits/sec  331    369 KBytes       
+[  5]   8.00-9.00   sec   420 MBytes  3.53 Gbits/sec    0    882 KBytes       
+[  5]   9.00-10.00  sec   394 MBytes  3.31 Gbits/sec  305    393 KBytes       
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-10.00  sec  4.00 GBytes  3.44 Gbits/sec  2246             sender
+[  5]   0.00-10.00  sec  4.00 GBytes  3.44 Gbits/sec                  receiver
+
+iperf Done.
 ```
