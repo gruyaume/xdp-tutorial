@@ -1,4 +1,4 @@
-module github.com/gruyaume/xdp-tutorial
+module github.com/gruyaume/router
 
 go 1.24.0
 
