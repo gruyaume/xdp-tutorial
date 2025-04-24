@@ -45,29 +45,29 @@ type Config struct {
 	LogLevel   string
 }
 
-func Load(path string) (Config, error) {
+func Load(path string) (*Config, error) {
 	var configYaml ConfigYaml
-	config := Config{}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec: G304
 	if err != nil {
-		return config, err
+		return nil, err
 	}
 	err = yaml.Unmarshal(data, &configYaml)
 	if err != nil {
-		return config, err
+		return nil, err
 	}
+	config := &Config{}
 	for _, ifaceName := range configYaml.Interfaces {
 		iface, err := net.InterfaceByName(ifaceName)
 		if err != nil {
-			return config, err
+			return nil, err
 		}
 		config.Interfaces = append(config.Interfaces, iface)
 	}
 	for _, route := range configYaml.Routes {
 		iface, err := net.InterfaceByName(route.Interface)
 		if err != nil {
-			return config, err
+			return nil, err
 		}
 
 		config.Routes = append(config.Routes, Route{

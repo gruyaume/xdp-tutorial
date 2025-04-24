@@ -41,7 +41,7 @@ func main() {
 	}()
 }
 
-func Run(config config.Config, logger *zap.SugaredLogger) error {
+func Run(config *config.Config, logger *zap.SugaredLogger) error {
 	program, err := pass.Load(config.Interfaces)
 	if err != nil {
 		return fmt.Errorf("error loading pass XDP program: %w", err)
