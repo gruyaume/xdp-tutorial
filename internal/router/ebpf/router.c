@@ -6,9 +6,6 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-#define LOG(fmt, ...) bpf_printk(fmt "\n", ##__VA_ARGS__)
-#define LOG_IP(msg, ip) bpf_printk(msg " %pI4\n", ip)
-
 /*----------------------------------------------------------
  * IPv4 checksum helpers
  *---------------------------------------------------------*/
@@ -154,7 +151,6 @@ int router(struct xdp_md *ctx)
     struct iphdr *ip = data + sizeof(*eth);
     if ((void *)ip + sizeof(*ip) > data_end)
         return XDP_DROP;
-    LOG_IP("saw IPv4 pkt, dst", &ip->daddr);
 
     __u32 dst = bpf_ntohl(ip->daddr);
     // pass router-local addrs 10.0.0.254, 10.1.0.254
@@ -174,28 +170,21 @@ int router(struct xdp_md *ctx)
     }
     if (!nh)
     {
-        LOG_IP("no route for dst", &ip->daddr);
         return XDP_DROP;
     }
-    LOG("-> ifindex %u, gateway %pI4", nh->ifindex, &nh->gateway);
 
     // 4) Rewrite L2
     struct ifmac *src = bpf_map_lookup_elem(&ifmap, &nh->ifindex);
     if (src)
         __builtin_memcpy(eth->h_source, src->mac, 6);
-    else
-        LOG("missing ifmap for idx %u", nh->ifindex);
 
     struct neighbor *dst_n = bpf_map_lookup_elem(&neigh_map, &dst);
     if (dst_n)
         __builtin_memcpy(eth->h_dest, dst_n->mac, 6);
-    else
-        LOG("missing neigh for %pI4", &dst);
 
     // 5) TTL-- + full IPv4 checksum recompute
     ip->ttl--;
     ip->check = ip_checksum(ip, data_end);
-    LOG("new TTL %u, new csum 0x%04x", ip->ttl, bpf_ntohs(ip->check));
 
     // 6) Redirect out the chosen interface
     return bpf_redirect(nh->ifindex, 0);
