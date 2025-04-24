@@ -1,0 +1,51 @@
+version: "2"
+linters:
+  enable:
+    - asciicheck
+    - bodyclose
+    - dogsled
+    - goconst
+    - godox
+    - gomodguard
+    - misspell
+    - nakedret
+    - noctx
+    - predeclared
+    - staticcheck
+    - unconvert
+    - unparam
+    - whitespace
+    - govet
+  disable:
+    - staticcheck
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  new-from-rev: ""
+  new: false
+severity:
+  default: error
+  rules:
+    - linters:
+        - mnd
+      severity: ignore
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

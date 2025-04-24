@@ -16,18 +16,14 @@ type PassProgram struct {
 	Objs  PassObjects
 }
 
-func Load(ifaces []string) (*PassProgram, error) {
+func Load(ifaces []*net.Interface) (*PassProgram, error) {
 	objs := PassObjects{}
 	err := LoadPassObjects(&objs, nil)
 	if err != nil {
 		return nil, fmt.Errorf("loading objects: %s", err)
 	}
 	links := make([]link.Link, 0)
-	for _, ifaceName := range ifaces {
-		iface, err := net.InterfaceByName(ifaceName)
-		if err != nil {
-			return nil, fmt.Errorf("getting interface %s: %s", ifaceName, err)
-		}
+	for _, iface := range ifaces {
 		xdpOpts := link.XDPOptions{
 			Program:   objs.PassPrograms.Router,
 			Interface: iface.Index,
