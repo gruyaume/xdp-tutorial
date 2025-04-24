@@ -31,7 +31,7 @@ func main() {
 	}
 
 	if err := Run(config, logger); err != nil {
-		logger.Errorf("Error running router: %v", err)
+		logger.Error("Error running router", zap.Error(err))
 		return
 	}
 	defer func() {
@@ -41,7 +41,7 @@ func main() {
 	}()
 }
 
-func Run(config *config.Config, logger *zap.SugaredLogger) error {
+func Run(config *config.Config, logger *zap.Logger) error {
 	program, err := router.Load(config.Interfaces)
 	if err != nil {
 		return fmt.Errorf("error loading pass XDP program: %w", err)
@@ -52,8 +52,8 @@ func Run(config *config.Config, logger *zap.SugaredLogger) error {
 	}
 	defer program.Objs.Close()
 
-	logger.Infof("Attached XDP program to ifaces")
-	logger.Infof("Press Ctrl-C to exit and remove the program")
+	logger.Info("Attached XDP program to ifaces")
+	logger.Info("Press Ctrl-C to exit and remove the program")
 
 	for _, route := range config.Routes {
 		err = program.Objs.UpdateRoute(&router.RouteOpts{
@@ -65,7 +65,7 @@ func Run(config *config.Config, logger *zap.SugaredLogger) error {
 		if err != nil {
 			return fmt.Errorf("error updating route %s/%d via %s: %w", route.Dst, route.Prefixlen, route.Gateway, err)
 		}
-		logger.Infof("updated route %s/%d via %s", route.Dst, route.Prefixlen, route.Gateway)
+		logger.Info("updated route", zap.String("dst", route.Dst), zap.Uint32("prefixlen", route.Prefixlen), zap.String("gateway", route.Gateway), zap.String("interface", route.Interface.Name))
 	}
 
 	for _, iface := range config.Interfaces {
@@ -73,7 +73,7 @@ func Run(config *config.Config, logger *zap.SugaredLogger) error {
 		if err != nil {
 			return fmt.Errorf("error updating interface %s: %w", iface.Name, err)
 		}
-		logger.Infof("updated interface %s", iface.Name)
+		logger.Info("updated interface", zap.String("interface", iface.Name))
 	}
 
 	for _, neighbor := range config.Neighbors {
@@ -84,7 +84,7 @@ func Run(config *config.Config, logger *zap.SugaredLogger) error {
 		if err != nil {
 			return fmt.Errorf("error updating neighbor %s: %w", neighbor.IP, err)
 		}
-		logger.Infof("updated neighbor %s", neighbor.IP)
+		logger.Info("updated neighbor", zap.String("ip", neighbor.IP), zap.String("mac", neighbor.Mac))
 	}
 
 	select {}
