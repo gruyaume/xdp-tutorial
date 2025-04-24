@@ -1,4 +1,8 @@
-# xdp-tutorial
+# Router
+
+An ebpf-based router!
+
+This is mostly exploratory code, and not intended for production use.
 
 ## Usage
 

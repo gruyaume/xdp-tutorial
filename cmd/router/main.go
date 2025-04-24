@@ -34,8 +34,11 @@ func main() {
 		logger.Errorf("Error running router: %v", err)
 		return
 	}
-	defer logger.Sync()
-
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			fmt.Println("Error syncing logger:", err)
+		}
+	}()
 }
 
 func Run(config config.Config, logger *zap.SugaredLogger) error {
