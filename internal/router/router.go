@@ -1,4 +1,4 @@
-package pass
+package router
 
 import (
 	"encoding/binary"
@@ -9,23 +9,23 @@ import (
 	"github.com/cilium/ebpf/link"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go Pass ebpf/pass.c --
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go Router ebpf/router.c --
 
-type PassProgram struct {
+type RouterProgram struct {
 	Links []link.Link
-	Objs  PassObjects
+	Objs  RouterObjects
 }
 
-func Load(ifaces []*net.Interface) (*PassProgram, error) {
-	objs := PassObjects{}
-	err := LoadPassObjects(&objs, nil)
+func Load(ifaces []*net.Interface) (*RouterProgram, error) {
+	objs := RouterObjects{}
+	err := LoadRouterObjects(&objs, nil)
 	if err != nil {
 		return nil, fmt.Errorf("loading objects: %s", err)
 	}
 	links := make([]link.Link, 0)
 	for _, iface := range ifaces {
 		xdpOpts := link.XDPOptions{
-			Program:   objs.PassPrograms.Router,
+			Program:   objs.RouterPrograms.Router,
 			Interface: iface.Index,
 			Flags:     link.XDPGenericMode,
 		}
@@ -36,7 +36,7 @@ func Load(ifaces []*net.Interface) (*PassProgram, error) {
 		links = append(links, l)
 	}
 
-	program := &PassProgram{
+	program := &RouterProgram{
 		Links: links,
 		Objs:  objs,
 	}
@@ -53,8 +53,8 @@ const (
 	XDP_REDIRECT
 )
 
-func (objs PassObjects) GetBytesNumber(action XDPAction) (uint64, error) {
-	var value PassDatarec
+func (objs RouterObjects) GetBytesNumber(action XDPAction) (uint64, error) {
+	var value RouterDatarec
 	err := objs.XdpStatsMap.Lookup(uint32(action), &value)
 	if err != nil {
 		return 0, fmt.Errorf("failed to lookup map: %s", err)
@@ -62,8 +62,8 @@ func (objs PassObjects) GetBytesNumber(action XDPAction) (uint64, error) {
 	return value.Bytes, nil
 }
 
-func (objs PassObjects) GetPacketsNumber(action XDPAction) (uint64, error) {
-	var value PassDatarec
+func (objs RouterObjects) GetPacketsNumber(action XDPAction) (uint64, error) {
+	var value RouterDatarec
 	err := objs.XdpStatsMap.Lookup(uint32(action), &value)
 	if err != nil {
 		return 0, fmt.Errorf("failed to lookup map: %s", err)
@@ -78,7 +78,7 @@ type RouteOpts struct {
 	Gateway   net.IP
 }
 
-func (objs PassObjects) UpdateRoute(opts *RouteOpts) error {
+func (objs RouterObjects) UpdateRoute(opts *RouteOpts) error {
 	dst4 := opts.Dst.To4()
 	if dst4 == nil {
 		return fmt.Errorf("destination is not IPv4: %v", opts.Dst)
@@ -88,11 +88,11 @@ func (objs PassObjects) UpdateRoute(opts *RouteOpts) error {
 		return fmt.Errorf("gateway is not IPv4: %v", opts.Gateway)
 	}
 
-	key := PassRouteKey{
+	key := RouterRouteKey{
 		Prefixlen: opts.Prefixlen,
 		Addr:      binary.BigEndian.Uint32(dst4),
 	}
-	value := PassNextHop{
+	value := RouterNextHop{
 		Ifindex: opts.Ifindex,
 		Gateway: binary.BigEndian.Uint32(gw4),
 	}
@@ -110,10 +110,10 @@ type Route struct {
 	Gateway   net.IP
 }
 
-func (objs PassObjects) ListRoutes() ([]Route, error) {
+func (objs RouterObjects) ListRoutes() ([]Route, error) {
 	routes := make([]Route, 0)
-	var key PassRouteKey
-	var value PassNextHop
+	var key RouterRouteKey
+	var value RouterNextHop
 	iterator := objs.RoutesMap.Iterate()
 	for iterator.Next(&key, &value) {
 		dst := net.IPv4(
@@ -138,9 +138,9 @@ func (objs PassObjects) ListRoutes() ([]Route, error) {
 	return routes, nil
 }
 
-func (objs PassObjects) UpdateInterface(ifi *net.Interface) error {
+func (objs RouterObjects) UpdateInterface(ifi *net.Interface) error {
 	key := uint32(ifi.Index)
-	val := PassIfmac{}
+	val := RouterIfmac{}
 	copy(val.Mac[:], ifi.HardwareAddr)
 	err := objs.Ifmap.Update(&key, &val, ebpf.UpdateAny)
 	if err != nil {
@@ -154,11 +154,11 @@ type NeighborOpts struct {
 	MAC string
 }
 
-func (objs PassObjects) UpdateNeighbor(opts *NeighborOpts) error {
+func (objs RouterObjects) UpdateNeighbor(opts *NeighborOpts) error {
 	ip := net.ParseIP(opts.IP).To4()
 	m, _ := net.ParseMAC(opts.MAC)
 	key := binary.BigEndian.Uint32(ip)
-	val := PassNeighbor{}
+	val := RouterNeighbor{}
 	copy(val.Mac[:], m)
 	err := objs.NeighMap.Update(&key, &val, ebpf.UpdateAny)
 	if err != nil {

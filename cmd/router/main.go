@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/gruyaume/xdp-tutorial/internal/config"
-	l "github.com/gruyaume/xdp-tutorial/internal/logger"
-	"github.com/gruyaume/xdp-tutorial/internal/pass"
+	"github.com/gruyaume/router/internal/config"
+	l "github.com/gruyaume/router/internal/logger"
+	"github.com/gruyaume/router/internal/router"
 	"go.uber.org/zap"
 )
 
@@ -42,7 +42,7 @@ func main() {
 }
 
 func Run(config *config.Config, logger *zap.SugaredLogger) error {
-	program, err := pass.Load(config.Interfaces)
+	program, err := router.Load(config.Interfaces)
 	if err != nil {
 		return fmt.Errorf("error loading pass XDP program: %w", err)
 	}
@@ -56,7 +56,7 @@ func Run(config *config.Config, logger *zap.SugaredLogger) error {
 	logger.Infof("Press Ctrl-C to exit and remove the program")
 
 	for _, route := range config.Routes {
-		err = program.Objs.UpdateRoute(&pass.RouteOpts{
+		err = program.Objs.UpdateRoute(&router.RouteOpts{
 			Prefixlen: route.Prefixlen,
 			Dst:       net.ParseIP(route.Dst),
 			Ifindex:   uint32(route.Interface.Index),
@@ -77,7 +77,7 @@ func Run(config *config.Config, logger *zap.SugaredLogger) error {
 	}
 
 	for _, neighbor := range config.Neighbors {
-		err = program.Objs.UpdateNeighbor(&pass.NeighborOpts{
+		err = program.Objs.UpdateNeighbor(&router.NeighborOpts{
 			IP:  neighbor.IP,
 			MAC: neighbor.Mac,
 		})
