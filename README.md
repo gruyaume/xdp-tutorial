@@ -192,6 +192,45 @@ sudo ./main --config router.yaml
 
 ## Reference
 
+### Configuration file
+
+Router is configured using a YAML file. 
+
+Start Router with the `--config` flag to specify the path to the configuration file.
+
+#### Parameters
+
+- `interfaces` (list[string]): List of interfaces to be used by the router. The eBPF program will be attached to all of them.
+- `routes` (list[route]): List of routes to be added to the routing table. Each route is defined by:
+  - `destination` (string): The destination IP address.
+  - `prefixlen` (int): The prefix length of the destination IP address.
+  - `interface` (string): The interface to use for this route.
+  - `gateway` (string): The gateway IP address for this route.
+- `neighbors` (list[neighbor]): List of neighbors to be added to the ARP table. Each neighbor is defined by:
+  - `ip` (string): The IP address of the neighbor.
+  - `mac` (string): The MAC address of the neighbor.
+
+#### Example
+
+```yaml
+interfaces: ["vethR1", "vethR2"]
+routes:
+  - destination: "10.1.0.1"
+    prefixlen: 32
+    interface: "vethR2"
+    gateway: "0.0.0.0"
+  - destination: "10.0.0.1"
+    prefixlen: 32
+    interface: "vethR1"
+    gateway: "0.0.0.0"
+neighbors:
+  - ip: "10.0.0.1"
+    mac: "c6:9f:fb:e6:cc:1f"
+  - ip: "10.1.0.1"
+    mac: "8a:93:d5:28:9e:35"
+log_level: "info"
+```
+
 ### Performance
 
 Using the Multipass setup, I am able to achieve **over 3 Gbps throughput** between host1 and host2, going through the router.
